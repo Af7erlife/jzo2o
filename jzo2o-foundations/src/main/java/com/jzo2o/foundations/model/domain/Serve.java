@@ -1,10 +1,13 @@
 package com.jzo2o.foundations.model.domain;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.jzo2o.foundations.enums.FoundationStatusEnum;
+import com.jzo2o.foundations.enums.StatusEnum;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.Accessors;
 
+import java.io.ObjectInputFilter;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
