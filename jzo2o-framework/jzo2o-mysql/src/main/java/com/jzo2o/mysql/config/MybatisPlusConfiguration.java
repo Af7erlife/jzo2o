@@ -1,7 +1,7 @@
 package com.jzo2o.mysql.config;
 
 import com.jzo2o.common.handler.UserInfoHandler;
-import com.jzo2o.mysql.interceptor.MyBatisAutoFillInterceptor;
+//import com.jzo2o.mysql.interceptor.MyBatisAutoFillInterceptor;
 import com.jzo2o.mysql.properties.MybatisPlusProperties;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
@@ -31,7 +31,7 @@ public class MybatisPlusConfiguration {
         paginationInnerInterceptor.setMaxLimit(mybatisPlusProperties.getPage().getMaxLimit());
         interceptor.addInnerInterceptor(paginationInnerInterceptor);
         // 4.字段填充插件
-        interceptor.addInnerInterceptor(new MyBatisAutoFillInterceptor(userInfoHandler));
+        //interceptor.addInnerInterceptor(new MyBatisAutoFillInterceptor(userInfoHandler));
         return interceptor;
     }
 }

@@ -21,6 +21,7 @@
         <module name="jzo2o-knife4j-web" />
         <module name="jzo2o-thirdparty" />
         <module name="jzo2o-gateway" />
+        <module name="jzo2o-customer" />
         <module name="jzo2o-publics" />
         <module name="jzo2o-canal-sync" />
         <module name="jzo2o-mysql" />
@@ -32,6 +33,7 @@
       <module name="jzo2o-api" options="-parameters" />
       <module name="jzo2o-canal-sync" options="-parameters" />
       <module name="jzo2o-common" options="-parameters" />
+      <module name="jzo2o-customer" options="-parameters" />
       <module name="jzo2o-es" options="-parameters" />
       <module name="jzo2o-foundations" options="-parameters" />
       <module name="jzo2o-gateway" options="-parameters" />

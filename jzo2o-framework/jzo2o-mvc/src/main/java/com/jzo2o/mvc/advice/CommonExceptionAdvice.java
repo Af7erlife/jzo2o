@@ -1,5 +1,6 @@
 package com.jzo2o.mvc.advice;
 
+import cn.hutool.core.collection.CollUtil;
 import com.jzo2o.common.constants.ErrorInfo;
 import com.jzo2o.common.expcetions.CommonException;
 import com.jzo2o.common.utils.*;
@@ -9,8 +10,13 @@ import com.jzo2o.mvc.utils.RequestUtils;
 import com.jzo2o.mvc.utils.ResponseUtils;
 import feign.FeignException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.ObjectError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.util.List;
 
 import static com.jzo2o.mvc.constants.HeaderConstants.BODY_PROCESSED;
 
@@ -71,6 +77,30 @@ public class CommonExceptionAdvice {
         return Result.error(e.getCode(), e.getMessage());
     }
 
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public Result methodArgumentNotValidExceptionExceptionHandler(MethodArgumentNotValidException ex) {
+        log.error("[MethodArgumentNotValidExceptionHandler]", ex);
+        ResponseUtils.setResponseHeader(BODY_PROCESSED, "1");
+        String errorMessage = null;
+        if(RequestUtils.getRequest().getRequestURL().toString().contains("/inner/")) {
+            CommonException commonException = new CommonException(ErrorInfo.Msg.REQUEST_FAILD);
+
+            ResponseUtils.setResponseHeader(HeaderConstants.INNER_ERROR, Base64Utils.encodeStr( "500|" + ErrorInfo.Msg.REQUEST_FAILD));
+            throw commonException;
+        }
+        FieldError fieldError = ex.getBindingResult().getFieldError();
+        if (fieldError == null) {
+            // 组合校验，参考自 https://t.zsxq.com/3HVTx
+            List<ObjectError> allErrors = ex.getBindingResult().getAllErrors();
+            if (CollUtil.isNotEmpty(allErrors)) {
+                errorMessage = allErrors.get(0).getDefaultMessage();
+            }
+        } else {
+            errorMessage = fieldError.getDefaultMessage();
+        }
+        return Result.error(String.format("请求参数不正确:%s",errorMessage ));
+    }
+
     /**
      * 非自定义异常处理
      * @param e 异常
@@ -89,7 +119,5 @@ public class CommonExceptionAdvice {
         }
         return Result.error(ErrorInfo.Msg.REQUEST_FAILD);
     }
-
-
 
 }

@@ -145,7 +145,7 @@ public class ServeServiceImpl extends ServiceImpl<ServeMapper, Serve> implements
         if(status != FoundationStatusEnum.INIT.getStatus()){
             throw new ForbiddenOperationException("只能删除草稿状态的服务！");
         }
-        Integer delete = baseMapper.deleteById(id);
+        int delete = baseMapper.deleteById(id);
         if(delete > 0 ){
             log.info("删除成功！");
         }else {
@@ -220,7 +220,6 @@ public class ServeServiceImpl extends ServiceImpl<ServeMapper, Serve> implements
         LambdaQueryWrapper<Serve> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(Serve::getRegionId, regionId);
         queryWrapper.eq(Serve::getSaleStatus, saleStatus);
-        List<Serve> serves = baseMapper.selectList(queryWrapper);
-        return serves;
+        return baseMapper.selectList(queryWrapper);
     }
 }
