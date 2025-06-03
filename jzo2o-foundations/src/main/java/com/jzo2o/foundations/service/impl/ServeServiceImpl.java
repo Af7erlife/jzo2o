@@ -1,114 +1,150 @@
 package com.jzo2o.foundations.service.impl;
 
-
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.ObjectUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.jzo2o.common.expcetions.CommonException;
 import com.jzo2o.common.expcetions.ForbiddenOperationException;
 import com.jzo2o.common.model.PageResult;
+import com.jzo2o.common.utils.CollUtils;
 import com.jzo2o.common.utils.ObjectUtils;
+import com.jzo2o.foundations.constants.RedisConstants;
 import com.jzo2o.foundations.enums.FoundationStatusEnum;
-import com.jzo2o.foundations.enums.StatusEnum;
-import com.jzo2o.foundations.mapper.RegionMapper;
-import com.jzo2o.foundations.mapper.ServeItemMapper;
-import com.jzo2o.foundations.mapper.ServeMapper;
-import com.jzo2o.foundations.model.domain.Region;
-import com.jzo2o.foundations.model.domain.Serve;
-import com.jzo2o.foundations.model.domain.ServeItem;
+import com.jzo2o.foundations.mapper.*;
+import com.jzo2o.foundations.model.domain.*;
 import com.jzo2o.foundations.model.dto.request.ServePageQueryReqDTO;
 import com.jzo2o.foundations.model.dto.request.ServeUpsertReqDTO;
-import com.jzo2o.foundations.model.dto.response.ServeResDTO;
+import com.jzo2o.foundations.model.dto.response.*;
+import com.jzo2o.foundations.service.HomeService;
+import com.jzo2o.foundations.service.IRegionService;
 import com.jzo2o.foundations.service.IServeService;
 import com.jzo2o.mysql.utils.PageHelperUtils;
-import lombok.extern.slf4j.Slf4j;
+import com.jzo2o.redis.helper.CacheHelper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.CachePut;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
+import org.springframework.data.redis.core.RedisConnectionUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-
 
 /**
  * <p>
- * 服务表 服务实现类
+ * 服务实现类
  * </p>
  *
- * @author author
- * @since 2025-04-28
+ * @author itcast
+ * @since 2023-07-03
  */
 @Service
-@Slf4j
 public class ServeServiceImpl extends ServiceImpl<ServeMapper, Serve> implements IServeService {
 
     @Resource
-    ServeItemMapper serveItemMapper;
+    private ServeItemMapper serveItemMapper;
 
     @Resource
-    RegionMapper regionMapper;
+    private RegionMapper regionMapper;
 
-    public PageResult<ServeResDTO> page(ServePageQueryReqDTO reqDTO) {
+    @Resource
+    private IRegionService regionService;
+    @Resource
+    private HomeService homeService;
+    @Resource
+    private ServeSyncMapper serveSyncMapper;
+    @Resource
+    private ServeTypeMapper serveTypeMapper;
+
+    /**
+     * 分页查询
+     *
+     * @param servePageQueryReqDTO 查询条件
+     * @return 分页结果
+     */
+    @Override
+    public PageResult<ServeResDTO> page(ServePageQueryReqDTO servePageQueryReqDTO) {
         //调用mapper查询数据，这里由于继承了ServiceImpl<ServeMapper, Serve>，使用baseMapper相当于使用ServeMapper
-        PageResult<ServeResDTO> serveResDTOPageResult = PageHelperUtils.selectPage(reqDTO, () -> baseMapper.queryServeListByRegionId(reqDTO.getRegionId()));
+        PageResult<ServeResDTO> serveResDTOPageResult = PageHelperUtils.selectPage(servePageQueryReqDTO, () -> baseMapper.queryServeListByRegionId(servePageQueryReqDTO.getRegionId()));
         return serveResDTOPageResult;
     }
 
     @Override
     @Transactional
     public void batchAdd(List<ServeUpsertReqDTO> serveUpsertReqDTOList) {
-        if(serveUpsertReqDTOList == null || serveUpsertReqDTOList.isEmpty()){
-            throw new ForbiddenOperationException("添加服务列表为空!");
-        }
-        for(ServeUpsertReqDTO reqDTO : serveUpsertReqDTOList){
+        for (ServeUpsertReqDTO serveUpsertReqDTO : serveUpsertReqDTOList) {
             //1.校验服务项是否为启用状态，不是启用状态不能新增
-            ServeItem serveItem = serveItemMapper.selectById(reqDTO.getServeItemId());
-            if(ObjectUtils.isEmpty(serveItem) || !FoundationStatusEnum.ENABLE.equals(serveItem.getActiveStatus())){
-                throw new ForbiddenOperationException("服务不存在或服务未启用，无法添加到区域！");
+            ServeItem serveItem = serveItemMapper.selectById(serveUpsertReqDTO.getServeItemId());
+            if(!(serveItem.getActiveStatus() == FoundationStatusEnum.ENABLE.getStatus())){
+                throw new ForbiddenOperationException("该服务未启用无法添加到区域下使用");
             }
+
             //2.校验是否重复新增
-            Integer count = lambdaQuery()
-                    .eq(Serve::getRegionId, reqDTO.getRegionId())
-                    .eq(Serve::getServeItemId, reqDTO.getServeItemId())
-                    .count();
+            LambdaQueryWrapper<Serve> queryWrapper = Wrappers.<Serve>lambdaQuery()
+                    .eq(Serve::getRegionId, serveUpsertReqDTO.getRegionId())
+                    .eq(Serve::getServeItemId, serveUpsertReqDTO.getServeItemId());
+            Integer count = baseMapper.selectCount(queryWrapper);
             if(count>0){
                 throw new ForbiddenOperationException(serveItem.getName()+"服务已存在");
             }
 
             //3.新增服务
-            Serve serve = BeanUtil.toBean(reqDTO, Serve.class);
-            Region region = regionMapper.selectById(reqDTO.getRegionId());//根据区域id获取区域
+            Serve serve = BeanUtil.toBean(serveUpsertReqDTO, Serve.class);
+            Region region = regionMapper.selectById(serveUpsertReqDTO.getRegionId());
             serve.setCityCode(region.getCityCode());
             baseMapper.insert(serve);
         }
     }
 
-    /**
-     * 更新价格
-     * @param id    服务id
-     * @param price 价格
-     */
     @Override
     @Transactional
     public Serve update(Long id, BigDecimal price) {
-        boolean isUpdate = lambdaUpdate().eq(Serve::getId, id).set(Serve::getPrice,price).update();
-        if(!isUpdate){
-            throw new CommonException("修改价格失败！");
-        }
+        //1.更新服务价格
+        LambdaUpdateWrapper<Serve> updateWrapper = Wrappers.<Serve>lambdaUpdate()
+                .eq(Serve::getId, id)
+                .set(Serve::getPrice, price);
+        super.update(updateWrapper);
+
         return baseMapper.selectById(id);
     }
 
     @Override
     @Transactional
-    public Serve onSale(Long id) {
+    public void deleteById(Long id) {
         Serve serve = baseMapper.selectById(id);
-        if(ObjectUtils.isNull(serve)){
-            throw new ForbiddenOperationException("区域服务不存在！");
+        if(ObjectUtil.isNull(serve)){
+            throw new ForbiddenOperationException("区域服务不存在");
         }
-        Integer status = serve.getSaleStatus();
-        if(!(status == FoundationStatusEnum.INIT.getStatus() || status == FoundationStatusEnum.DISABLE.getStatus())){
-            throw new ForbiddenOperationException("草稿或下架状态才能上架！");
+        //草稿状态方可删除
+        if (!(serve.getSaleStatus()==FoundationStatusEnum.INIT.getStatus())) {
+            throw new ForbiddenOperationException("草稿状态方可删除");
+        }
+
+        //删除服务
+        baseMapper.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public Serve onSale(Long id){
+        Serve serve = baseMapper.selectById(id);
+        if(ObjectUtil.isNull(serve)){
+            throw new ForbiddenOperationException("区域服务不存在");
+        }
+        //上架状态
+        Integer saleStatus = serve.getSaleStatus();
+        //草稿或下架状态方可上架
+        if (!(saleStatus==FoundationStatusEnum.INIT.getStatus() || saleStatus==FoundationStatusEnum.DISABLE.getStatus())) {
+            throw new ForbiddenOperationException("草稿或下架状态方可上架");
         }
         //服务项id
         Long serveItemId = serve.getServeItemId();
@@ -122,104 +158,183 @@ public class ServeServiceImpl extends ServiceImpl<ServeMapper, Serve> implements
         if (!(FoundationStatusEnum.ENABLE.getStatus()==activeStatus)) {
             throw new ForbiddenOperationException("服务项为启用状态方可上架");
         }
+
         //更新上架状态
-        boolean update = lambdaUpdate()
+        LambdaUpdateWrapper<Serve> updateWrapper = Wrappers.<Serve>lambdaUpdate()
                 .eq(Serve::getId, id)
-                .set(Serve::getSaleStatus, FoundationStatusEnum.ENABLE.getStatus())
-                .update();
-        if(!update){
-            throw new CommonException("启动服务失败");
-        }
+                .set(Serve::getSaleStatus, FoundationStatusEnum.ENABLE.getStatus());
+        update(updateWrapper);
+        //添加同步表
+        addServeSync(id);
         return baseMapper.selectById(id);
     }
 
     @Override
     @Transactional
-    public void delete(Long id) {
+    public Serve offSale(Long id){
         Serve serve = baseMapper.selectById(id);
-        if(ObjectUtils.isNull(serve)){
-            throw new ForbiddenOperationException("不存在该id的服务！");
+        if(ObjectUtil.isNull(serve)){
+            throw new ForbiddenOperationException("区域服务不存在");
         }
-        Integer status = serve.getSaleStatus();
-        //草稿状态才能删除
-        if(status != FoundationStatusEnum.INIT.getStatus()){
-            throw new ForbiddenOperationException("只能删除草稿状态的服务！");
+        //上架状态
+        Integer saleStatus = serve.getSaleStatus();
+        //上架状态方可下架
+        if (!(saleStatus==FoundationStatusEnum.ENABLE.getStatus())) {
+            throw new ForbiddenOperationException("上架状态方可下架");
         }
-        int delete = baseMapper.deleteById(id);
-        if(delete > 0 ){
-            log.info("删除成功！");
-        }else {
-            throw new ForbiddenOperationException("删除失败！");
-        }
-    }
-
-    @Override
-    @Transactional
-    public Serve offSale(Long id) {
-        Serve serve = baseMapper.selectById(id);
-        if(ObjectUtils.isNull(serve)){
-            throw new ForbiddenOperationException("区域服务不存在！");
-        }
-        Integer status = serve.getSaleStatus();
-        if(!(FoundationStatusEnum.ENABLE.getStatus()==status)){
-            throw new ForbiddenOperationException("只能下架处在上架状态的服务！");
-        }
-        boolean update = lambdaUpdate().eq(Serve::getId, id).set(Serve::getSaleStatus,FoundationStatusEnum.DISABLE.getStatus()).update();
-        if(!update){
-            throw new CommonException("下架服务失败");
-        }
+        //更新下架状态
+        LambdaUpdateWrapper<Serve> updateWrapper = Wrappers.<Serve>lambdaUpdate()
+                .eq(Serve::getId, id)
+                .set(Serve::getSaleStatus, FoundationStatusEnum.DISABLE.getStatus());
+        update(updateWrapper);
+        serveSyncMapper.deleteById(id);
         return baseMapper.selectById(id);
     }
 
+
+    /**
+     * 服务设置热门/取消
+     *
+     * @param id   服务id
+     * @param flag 是否为热门，0：非热门，1：热门
+     */
     @Override
     @Transactional
-    public Serve onHot(Long id){
-        Serve serve = baseMapper.selectById(id);
-        if(ObjectUtils.isNull(serve)){
-            throw new ForbiddenOperationException("区域服务不存在！");
-        }
-        Integer isHot = serve.getIsHot();
-        if(isHot == StatusEnum.YES.getCode()){
-            throw new ForbiddenOperationException("该服务已经是热门了！");
-        }
-        Integer status = serve.getSaleStatus();
-        if(!(FoundationStatusEnum.ENABLE.getStatus()==status)){
-            throw new ForbiddenOperationException("需在上架状态才能修改热门！");
-        }
-        boolean update = lambdaUpdate().eq(Serve::getId,id).set(Serve::getIsHot,StatusEnum.YES.getCode()).update();
-        if(!update){
-            throw new CommonException("更新热门失败！");
-        }
-        return baseMapper.selectById(id);
+    public void changeHotStatus(Long id, Integer flag) {
+        //1.设置热门
+        LambdaUpdateWrapper<Serve> updateWrapper = Wrappers.<Serve>lambdaUpdate()
+                .eq(Serve::getId, id)
+                .set(Serve::getIsHot, flag)
+                .set(Serve::getHotTimeStamp, System.currentTimeMillis());
+        super.update(updateWrapper);
+    }
+
+    /**
+     * 根据区域id和售卖状态查询关联服务数量
+     *
+     * @param regionId   区域id
+     * @param saleStatus 售卖状态，0：草稿，1下架，2上架。可传null，即查询所有状态
+     * @return 服务数量
+     */
+    @Override
+    public int queryServeCountByRegionIdAndSaleStatus(Long regionId, Integer saleStatus) {
+        LambdaQueryWrapper<Serve> queryWrapper = Wrappers.<Serve>lambdaQuery()
+                .eq(Serve::getRegionId, regionId)
+                .eq(ObjectUtil.isNotEmpty(saleStatus), Serve::getSaleStatus, saleStatus);
+        return baseMapper.selectCount(queryWrapper);
+    }
+    /**
+     * 根据服务项id和售卖状态查询关联服务数量
+     *
+     * @param  serveItemId  服务项id
+     * @param saleStatus 售卖状态，0：草稿，1下架，2上架。可传null，即查询所有状态
+     * @return 服务数量
+     */
+    @Override
+    public int queryServeCountByServeItemIdAndSaleStatus(Long serveItemId, Integer saleStatus) {
+        LambdaQueryWrapper<Serve> queryWrapper = Wrappers.<Serve>lambdaQuery()
+                .eq(Serve::getServeItemId, serveItemId)
+                .eq(ObjectUtil.isNotEmpty(saleStatus), Serve::getSaleStatus, saleStatus);
+        return baseMapper.selectCount(queryWrapper);
     }
 
     @Override
-    @Transactional
-    public Serve offHot(Long id){
-        Serve serve = baseMapper.selectById(id);
-        if(ObjectUtils.isNull(serve)){
-            throw new ForbiddenOperationException("区域服务不存在！");
-        }
-        Integer isHot = serve.getIsHot();
-        if(isHot == StatusEnum.NO.getCode()){
-            throw new ForbiddenOperationException("该服务已经取消热门了！");
-        }
-        Integer status = serve.getSaleStatus();
-        if(!(FoundationStatusEnum.ENABLE.getStatus()==status)){
-            throw new ForbiddenOperationException("需在上架状态才能修改热门！");
-        }
-        boolean update = lambdaUpdate().eq(Serve::getId,id).set(Serve::getIsHot,StatusEnum.NO.getCode()).update();
-        if(!update){
-            throw new CommonException("更新热门失败！");
-        }
-        return baseMapper.selectById(id);
+    @Cacheable(value = RedisConstants.CacheName.SERVE,key = "#id",cacheManager = RedisConstants.CacheManager.THIRTY_MINUTES)
+    public Serve queryServeByIdCache(Long id) {
+        return getById(id);
     }
 
     @Override
-    public List<Serve> queryServeByRegionIdAndSaleStatus(Long regionId, Integer saleStatus) {
-        LambdaQueryWrapper<Serve> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(Serve::getRegionId, regionId);
-        queryWrapper.eq(Serve::getSaleStatus, saleStatus);
-        return baseMapper.selectList(queryWrapper);
+    @Caching(cacheable = {
+            @Cacheable(value = RedisConstants.CacheName.SERVE_ICON, key = "#regionId",
+                    cacheManager = RedisConstants.CacheManager.THIRTY_MINUTES,
+                    unless = "#result.size() != 0"), // 防止缓存穿透
+            @Cacheable(value = RedisConstants.CacheName.SERVE_ICON, key = "#regionId",
+                    cacheManager = RedisConstants.CacheManager.FOREVER,
+                    unless = "#result.size() == 0")})
+    public List<ServeCategoryResDTO> getFirstPageServeList(Long regionId) {
+        Region region = regionService.getById(regionId);
+        if (ObjectUtils.isEmpty(region)) {
+            return Collections.emptyList();
+        }
+
+        List<ServeCategoryResDTO> serveIconList = baseMapper.findServeIconCategoryByRegionId(regionId);
+        if (CollUtils.isEmpty(serveIconList)) {
+            return Collections.emptyList();
+        }
+
+        // 保留最多前两个类型及最多前4个服务项
+        serveIconList = new ArrayList<>(serveIconList.subList(0, Math.min(serveIconList.size(), 2)));
+        serveIconList.forEach(res -> {
+            List<ServeSimpleResDTO> serveResDTOList = res.getServeResDTOList();
+            res.setServeResDTOList(new ArrayList<>(serveResDTOList.subList(0, Math.min(serveResDTOList.size(), 4))));
+        });
+
+        return serveIconList;
     }
+
+    /**
+     * 根据区域id查询热门服务列表
+     *
+     * @param regionId 区域id
+     * @return 热门服务列表
+     */
+    @Override
+    public List<ServeAggregationSimpleResDTO> findHotServeListByRegionId(Long regionId) {
+        return baseMapper.queryHotServeListByRegionId(regionId);
+    }
+
+    @Override
+    public ServeAggregationSimpleResDTO findDetailById(Long id) {
+        //1.查询服务信息
+        Serve serve = homeService.queryServeByIdCache(id);
+
+        //2.查询服务项信息
+        ServeItem serveItem = homeService.queryServeItemByIdCache(serve.getServeItemId());
+
+        //3.封装数据
+        ServeAggregationSimpleResDTO serveAggregationSimpleResDTO = BeanUtil.toBean(serve, ServeAggregationSimpleResDTO.class);
+        serveAggregationSimpleResDTO.setServeItemName(serveItem.getName());
+        serveAggregationSimpleResDTO.setServeItemImg(serveItem.getImg());
+        serveAggregationSimpleResDTO.setDetailImg(serveItem.getDetailImg());
+        serveAggregationSimpleResDTO.setUnit(serveItem.getUnit());
+        return serveAggregationSimpleResDTO;
+    }
+    /**
+     * 新增服务同步数据
+     *
+     * @param serveId 服务id
+     */
+    private void addServeSync(Long serveId) {
+        //服务信息
+        Serve serve = baseMapper.selectById(serveId);
+        //区域信息
+        Region region = regionMapper.selectById(serve.getRegionId());
+        //服务项信息
+        ServeItem serveItem = serveItemMapper.selectById(serve.getServeItemId());
+        //服务类型
+        ServeType serveType = serveTypeMapper.selectById(serveItem.getServeTypeId());
+
+        ServeSync serveSync = new ServeSync();
+        serveSync.setServeTypeId(serveType.getId());
+        serveSync.setServeTypeName(serveType.getName());
+        serveSync.setServeTypeIcon(serveType.getServeTypeIcon());
+        serveSync.setServeTypeImg(serveType.getImg());
+        serveSync.setServeTypeSortNum(serveType.getSortNum());
+
+        serveSync.setServeItemId(serveItem.getId());
+        serveSync.setServeItemIcon(serveItem.getServeItemIcon());
+        serveSync.setServeItemName(serveItem.getName());
+        serveSync.setServeItemImg(serveItem.getImg());
+        serveSync.setServeItemSortNum(serveItem.getSortNum());
+        serveSync.setUnit(serveItem.getUnit());
+        serveSync.setDetailImg(serveItem.getDetailImg());
+        serveSync.setPrice(serve.getPrice());
+
+        serveSync.setCityCode(region.getCityCode());
+        serveSync.setId(serve.getId());
+        serveSync.setIsHot(serve.getIsHot());
+        serveSyncMapper.insert(serveSync);
+    }
+
 }
