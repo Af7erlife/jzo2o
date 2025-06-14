@@ -3,7 +3,6 @@ package com.jzo2o.customer.service.impl;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.ObjectUtil;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -29,7 +28,10 @@ import com.jzo2o.customer.model.dto.request.InstitutionRegisterReqDTO;
 import com.jzo2o.customer.model.dto.request.InstitutionResetPasswordReqDTO;
 import com.jzo2o.customer.model.dto.request.ServePickUpReqDTO;
 import com.jzo2o.customer.model.dto.request.ServeProviderPageQueryReqDTO;
-import com.jzo2o.customer.model.dto.response.*;
+import com.jzo2o.customer.model.dto.response.CertificationStatusDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderBasicInformationResDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderInfoResDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderListResDTO;
 import com.jzo2o.customer.service.*;
 import com.jzo2o.mvc.utils.UserContext;
 import com.jzo2o.mysql.utils.PageHelperUtils;
@@ -119,6 +121,16 @@ public class ServeProviderServiceImpl extends ServiceImpl<ServeProviderMapper, S
         return baseMapper.selectById(id);
     }
 
+    @Override
+    public void registerInstitution(InstitutionRegisterReqDTO institutionRegisterReqDTO) {
+        // 1.验证验证码是否匹配
+        boolean verifyResult = smsCodeApi.verify(institutionRegisterReqDTO.getPhone(), SmsBussinessTypeEnum.INSTITION_REGISTER, institutionRegisterReqDTO.getVerifyCode()).getIsSuccess();
+        if (!verifyResult) {
+            throw new BadRequestException("短信验证码校验失败");
+        }
+        // 2.新增机构
+        owner.add(institutionRegisterReqDTO.getPhone(), UserType.INSTITUTION, passwordEncoder.encode(institutionRegisterReqDTO.getPassword()));
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -148,6 +160,74 @@ public class ServeProviderServiceImpl extends ServiceImpl<ServeProviderMapper, S
 
         return serveProvider;
     }
+
+    @Override
+    public void resetPassword(InstitutionResetPasswordReqDTO institutionResetPasswordReqDTO) {
+        // 1.校验
+        // 1.1.校验验证码是否正确
+        boolean verifyResult = smsCodeApi.verify(institutionResetPasswordReqDTO.getPhone(), SmsBussinessTypeEnum.INSTITUTION_RESET_PASSWORD, institutionResetPasswordReqDTO.getVerifyCode()).getIsSuccess();
+        if (!verifyResult) {
+            throw new BadRequestException("短信验证码错误");
+        }
+        // 1.2.校验手机号是否是当前手机号
+        ServeProvider serveProvider = lambdaQuery().eq(ServeProvider::getPhone, institutionResetPasswordReqDTO.getPhone())
+                .one();
+        if (serveProvider == null) {
+            throw new BadRequestException("手机号错误");
+        }
+        // 2.修改密码
+        lambdaUpdate().set(ServeProvider::getPassword, passwordEncoder.encode(institutionResetPasswordReqDTO.getPassword()))
+                .eq(ServeProvider::getId, serveProvider.getId())
+                .update();
+    }
+
+
+
+//    @Override
+//    @Transactional(propagation = Propagation.REQUIRED, rollbackFor = Exception.class)
+//    public void settingStatus(Long currentUserId) {
+//        ServeProvider serveProvider = baseMapper.selectById(currentUserId);
+//        // 已完成设置
+//        if (serveProvider.getSettingsStatus() == 1) {
+//            return;
+//        }
+//
+//        //获取认证状态
+//        CertificationStatusDTO certificationStatusDTO = getCertificationStatus(serveProvider.getType(), currentUserId);
+//        //获取认证状态
+//        Integer certificationStatus = ObjectUtils.get(certificationStatusDTO,CertificationStatusDTO::getCertificationStatus);
+//        // 校验是否认证通过，不通过return
+//        if (ObjectUtils.notEqual(CertificationStatusEnum.SUCCESS.getStatus(), certificationStatus)) {
+//            return;
+//        }
+//
+//        ServeProviderSettings serveProviderSettings = serveProviderSettingsService.findById(currentUserId);
+//        // 服务范围未设置
+//        if (ObjectUtils.isEmpty(serveProviderSettings.getLon())) {
+//            return;
+//        }
+//        // 未设置过接单状态
+//        if (EnableStatusEnum.UNKNOWAL.equals(serveProviderSettings.getCanPickUp())) {
+//            return;
+//        }
+//        // 未设置过服务技巧
+//        if (serveProviderSettings.getHaveSkill() == 0) {
+//            return;
+//        }
+//
+//        ServeProvider updateServeProvider = new ServeProvider();
+//        updateServeProvider.setSettingsStatus(1);
+//        updateServeProvider.setId(currentUserId);
+//        baseMapper.updateById(updateServeProvider);
+//
+//        ServeProviderSync serveProviderSync =
+//                ServeProviderSync.builder()
+//                        .id(currentUserId)
+//                        .settingStatus(1)
+//                        .build();
+//        serveProviderSyncService.updateById(serveProviderSync);
+//
+//    }
 
     @Override
     public ServeProviderResDTO findServeProviderInfo(Long id) {
@@ -194,83 +274,12 @@ public class ServeProviderServiceImpl extends ServiceImpl<ServeProviderMapper, S
      */
     @Override
     public CertificationStatusDTO getCertificationStatus(Integer userType, Long providerId){
-
         if (ObjectUtil.equal(UserType.WORKER, userType)) {
             WorkerCertification workerCertification = workerCertificationService.getById(providerId);
             return BeanUtil.toBean(workerCertification,CertificationStatusDTO.class);
         } else {
             AgencyCertification agencyCertification = agencyCertificationService.getById(providerId);
             return BeanUtil.toBean(agencyCertification,CertificationStatusDTO.class);
-        }
-    }
-
-    /**
-     * 服务机构注册账号并初始化密码
-     * @param institutionRegisterReqDTO
-     * @return
-     */
-    @Override
-    @Transactional
-    public void register(InstitutionRegisterReqDTO institutionRegisterReqDTO) {
-        ServeProvider existServeProvider = lambdaQuery().eq(ServeProvider::getPhone,institutionRegisterReqDTO.getPhone()).one();
-        if (ObjectUtils.isNotEmpty(existServeProvider)){
-            if(existServeProvider.getType().equals(UserType.WORKER)){
-                throw new BadRequestException("该账号已被服务人员注册");
-            }else {
-                throw new BadRequestException("该账号已被机构注册");
-            }
-        }
-        // 数据校验
-        if(StringUtils.isEmpty(institutionRegisterReqDTO.getVerifyCode())){
-            throw new BadRequestException("验证码错误，请重新获取");
-        }
-        //远程调用publics服务校验验证码是否正确
-        boolean verifyResult = smsCodeApi.verify(institutionRegisterReqDTO.getPhone(), SmsBussinessTypeEnum.INSTITION_REGISTER, institutionRegisterReqDTO.getVerifyCode()).getIsSuccess();
-        if(!verifyResult) {
-            throw new BadRequestException("验证码错误，请重新获取");
-        }
-
-        //新增服务人员/机构信息
-        ServeProvider serveProvider = new ServeProvider();
-        serveProvider.setPhone(institutionRegisterReqDTO.getPhone());
-        serveProvider.setPassword(passwordEncoder.encode(institutionRegisterReqDTO.getPassword()));
-        serveProvider.setType(UserType.INSTITUTION);
-        serveProvider.setStatus(CommonStatusConstants.USER_STATUS_NORMAL);
-        serveProvider.setCode(IdUtils.getSnowflakeNextIdStr());
-        baseMapper.insert(serveProvider);
-
-        //新增服务人员/机构配置信息同步表信息,方便后期对配置项进行配置
-        serveProviderSettingsService.add(serveProvider.getId(), UserType.INSTITUTION);
-    }
-
-    /**
-     * 重置密码
-     * @param reqDTO
-     * @return
-     */
-    @Override
-    @Transactional
-    public void resetPassword(InstitutionResetPasswordReqDTO reqDTO) {
-        ServeProvider serveProvider = lambdaQuery().eq(ServeProvider::getPhone,reqDTO.getPhone()).one();
-        if (ObjectUtils.isEmpty(serveProvider)){
-            throw new BadRequestException("该手机号还未注册，请注册！");
-
-        }
-        // 数据校验
-        if(StringUtils.isEmpty(reqDTO.getVerifyCode())){
-            throw new BadRequestException("验证码错误，请重新获取");
-        }
-        //远程调用publics服务校验验证码是否正确
-        boolean verifyResult = smsCodeApi.verify(reqDTO.getPhone(), SmsBussinessTypeEnum.INSTITUTION_RESET_PASSWORD, reqDTO.getVerifyCode()).getIsSuccess();
-        if(!verifyResult) {
-            throw new BadRequestException("验证码错误，请重新获取");
-        }
-        boolean update = lambdaUpdate()
-                .eq(ServeProvider::getId,serveProvider.getId())
-                .set(ServeProvider::getPassword,passwordEncoder.encode(reqDTO.getPassword()))
-                .update();
-        if(!update) {
-            throw new BadRequestException("密码重置失败，请稍后再试！");
         }
     }
 

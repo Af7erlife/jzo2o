@@ -16,6 +16,7 @@
         <module name="jzo2o-xxl-job" />
         <module name="jzo2o-foundations" />
         <module name="jzo2o-seata" />
+        <module name="jzo2o-orders-manager" />
         <module name="jzo2o-statemachine" />
         <module name="jzo2o-mvc" />
         <module name="jzo2o-api" />
@@ -23,6 +24,7 @@
         <module name="jzo2o-thirdparty" />
         <module name="jzo2o-gateway" />
         <module name="jzo2o-customer" />
+        <module name="jzo2o-orders-base" />
         <module name="jzo2o-publics" />
         <module name="jzo2o-canal-sync" />
         <module name="jzo2o-mysql" />
@@ -41,6 +43,8 @@
       <module name="jzo2o-knife4j-web" options="-parameters" />
       <module name="jzo2o-mvc" options="-parameters" />
       <module name="jzo2o-mysql" options="-parameters" />
+      <module name="jzo2o-orders-base" options="-parameters" />
+      <module name="jzo2o-orders-manager" options="-parameters" />
       <module name="jzo2o-publics" options="-parameters" />
       <module name="jzo2o-rabbitmq" options="-parameters" />
       <module name="jzo2o-redis" options="-parameters" />

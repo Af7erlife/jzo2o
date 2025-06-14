@@ -1,6 +1,10 @@
 package com.jzo2o.foundations.controller.consumer;
 
-import com.jzo2o.foundations.model.dto.response.*;
+
+import com.jzo2o.foundations.model.dto.response.ServeAggregationSimpleResDTO;
+import com.jzo2o.foundations.model.dto.response.ServeAggregationTypeSimpleResDTO;
+import com.jzo2o.foundations.model.dto.response.ServeCategoryResDTO;
+import com.jzo2o.foundations.model.dto.response.ServeSimpleResDTO;
 import com.jzo2o.foundations.service.HomeService;
 import com.jzo2o.foundations.service.IServeService;
 import com.jzo2o.foundations.service.ServeAggregationService;
@@ -8,6 +12,7 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -22,16 +27,17 @@ import java.util.List;
  * @author itcast
  * @since 2023-07-03
  */
+@Validated
 @RestController("consumerServeController")
 @RequestMapping("/customer/serve")
 @Api(tags = "用户端 - 首页服务查询接口")
 public class FirstPageServeController {
     @Resource
-    HomeService homeService;
-    @Resource
     private IServeService serveService;
     @Resource
     private ServeAggregationService serveAggregationService;
+    @Resource
+    private HomeService homeService;
 
     @GetMapping("/firstPageServeList")
     @ApiOperation("首页服务列表")
@@ -39,15 +45,7 @@ public class FirstPageServeController {
             @ApiImplicitParam(name = "regionId", value = "区域id", required = true, dataTypeClass = Long.class)
     })
     public List<ServeCategoryResDTO> serveCategory(@RequestParam("regionId") Long regionId) {
-        List<ServeCategoryResDTO> serveCategoryResDTOS = homeService.queryServeIconCategoryByRegionIdCache(regionId);
-        return serveCategoryResDTOS;
-    }
-
-    @GetMapping("/serveTypeList")
-    @ApiOperation("服务分类列表")
-    @ApiImplicitParam(name = "regionId", value = "区域id", required = true, dataTypeClass = Long.class)
-    public List<serveTypeListResDTO> queryServeTypeList(@RequestParam("regionId") Long regionId) {
-        return homeService.queryServeTypeList(regionId);
+        return homeService.queryServeIconCategoryByRegionIdCache(regionId);
     }
 
     @GetMapping("/hotServeList")
@@ -59,13 +57,13 @@ public class FirstPageServeController {
         return homeService.findHotServeListByRegionIdCache(regionId);
     }
 
-    @GetMapping("/{id}")
-    @ApiOperation("根据id查询服务")
+    @GetMapping("/serveTypeList")
+    @ApiOperation("服务分类列表")
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "id", value = "服务id", required = true, dataTypeClass = Long.class)
+            @ApiImplicitParam(name = "regionId", value = "区域id", required = true, dataTypeClass = Long.class)
     })
-    public ServeAggregationSimpleResDTO findById(@NotNull(message = "id不能为空") @PathVariable("id") Long id) {
-        return serveService.findDetailById(id);
+    public List<ServeAggregationTypeSimpleResDTO> serveTypeList(@RequestParam("regionId") Long regionId) {
+        return homeService.queryServeTypeListByRegionIdCache(regionId);
     }
 
     @GetMapping("/search")
@@ -78,7 +76,15 @@ public class FirstPageServeController {
     public List<ServeSimpleResDTO> findServeList(@RequestParam("cityCode") String cityCode,
                                                  @RequestParam(value = "serveTypeId", required = false) Long serveTypeId,
                                                  @RequestParam(value = "keyword", required = false) String keyword) {
-        List<ServeSimpleResDTO> serveList = serveAggregationService.findServeList(cityCode, serveTypeId, keyword);
-        return serveList;
+        return serveAggregationService.findServeList(cityCode, serveTypeId, keyword);
+    }
+
+    @GetMapping("/{id}")
+    @ApiOperation("根据id查询服务")
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "id", value = "服务id", required = true, dataTypeClass = Long.class)
+    })
+    public ServeAggregationSimpleResDTO findById(@NotNull(message = "id不能为空") @PathVariable("id") Long id) {
+        return serveService.findDetailById(id);
     }
 }

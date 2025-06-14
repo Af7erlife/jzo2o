@@ -12,32 +12,21 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.jzo2o.api.foundations.dto.response.ServeTypeSimpleResDTO;
 import com.jzo2o.common.expcetions.ForbiddenOperationException;
 import com.jzo2o.common.model.PageResult;
-import com.jzo2o.common.utils.CollUtils;
-import com.jzo2o.common.utils.ObjectUtils;
-import com.jzo2o.foundations.constants.RedisConstants;
 import com.jzo2o.foundations.enums.FoundationStatusEnum;
-import com.jzo2o.foundations.mapper.RegionMapper;
-import com.jzo2o.foundations.mapper.ServeMapper;
 import com.jzo2o.foundations.mapper.ServeTypeMapper;
-import com.jzo2o.foundations.model.domain.Region;
 import com.jzo2o.foundations.model.domain.ServeType;
 import com.jzo2o.foundations.model.dto.request.ServeSyncUpdateReqDTO;
 import com.jzo2o.foundations.model.dto.request.ServeTypePageQueryReqDTO;
 import com.jzo2o.foundations.model.dto.request.ServeTypeUpsertReqDTO;
-import com.jzo2o.foundations.model.dto.response.ServeAggregationTypeSimpleResDTO;
 import com.jzo2o.foundations.model.dto.response.ServeTypeResDTO;
-import com.jzo2o.foundations.model.dto.response.serveTypeListResDTO;
 import com.jzo2o.foundations.service.IServeItemService;
 import com.jzo2o.foundations.service.IServeSyncService;
 import com.jzo2o.foundations.service.IServeTypeService;
 import com.jzo2o.mysql.utils.PageUtils;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.Resource;
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -52,8 +41,7 @@ public class ServeTypeServiceImpl extends ServiceImpl<ServeTypeMapper, ServeType
     private IServeItemService serveItemService;
     @Resource
     private IServeSyncService serveSyncService;
-    @Resource
-    private RegionMapper regionMapper;
+
     /**
      * 服务类型新增
      *
@@ -203,27 +191,5 @@ public class ServeTypeServiceImpl extends ServiceImpl<ServeTypeMapper, ServeType
                 .orderByDesc(ServeType::getUpdateTime);
         List<ServeType> serveTypeList = baseMapper.selectList(queryWrapper);
         return BeanUtil.copyToList(serveTypeList, ServeTypeSimpleResDTO.class);
-    }
-
-    @Override
-    @Caching(cacheable = {
-            @Cacheable(value = RedisConstants.CacheName.SERVE_TYPE, key = "#regionId",
-                    cacheManager = RedisConstants.CacheManager.THIRTY_MINUTES,
-                    unless = "#result.size() != 0"), // 防止缓存穿透
-            @Cacheable(value = RedisConstants.CacheName.SERVE_TYPE, key = "#regionId",
-                    cacheManager = RedisConstants.CacheManager.FOREVER,
-                    unless = "#result.size() == 0")})
-    public List<serveTypeListResDTO> getServeTypeList(Long regionId) {
-        Region region = regionMapper.selectById(regionId);
-        if (ObjectUtils.isEmpty(region)) {
-            return Collections.emptyList();
-        }
-
-        List<serveTypeListResDTO> serveTypeList = baseMapper.queryServeTypeListByRegionId(regionId);
-        if (CollUtils.isEmpty(serveTypeList)) {
-            return Collections.emptyList();
-        }
-
-        return serveTypeList;
     }
 }

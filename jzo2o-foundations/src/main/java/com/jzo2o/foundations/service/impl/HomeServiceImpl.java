@@ -5,16 +5,17 @@ import com.jzo2o.api.foundations.dto.response.RegionSimpleResDTO;
 import com.jzo2o.foundations.constants.RedisConstants;
 import com.jzo2o.foundations.enums.FoundationStatusEnum;
 import com.jzo2o.foundations.mapper.ServeMapper;
-import com.jzo2o.foundations.mapper.ServeTypeMapper;
 import com.jzo2o.foundations.model.domain.Region;
 import com.jzo2o.foundations.model.domain.Serve;
 import com.jzo2o.foundations.model.domain.ServeItem;
 import com.jzo2o.foundations.model.dto.response.ServeAggregationSimpleResDTO;
+import com.jzo2o.foundations.model.dto.response.ServeAggregationTypeSimpleResDTO;
 import com.jzo2o.foundations.model.dto.response.ServeCategoryResDTO;
 import com.jzo2o.foundations.model.dto.response.ServeSimpleResDTO;
-import com.jzo2o.foundations.model.dto.response.serveTypeListResDTO;
-import com.jzo2o.foundations.service.*;
-import com.jzo2o.mysql.utils.SpringBeanUtil;
+import com.jzo2o.foundations.service.HomeService;
+import com.jzo2o.foundations.service.IRegionService;
+import com.jzo2o.foundations.service.IServeItemService;
+import com.jzo2o.foundations.service.IServeService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
@@ -26,32 +27,46 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-@Service
+/**
+ * 首页查询相关功能
+ *
+ * @author itcast
+ * @create 2023/8/21 10:57
+ **/
 @Slf4j
+@Service
 public class HomeServiceImpl implements HomeService {
     @Resource
-    private ServeMapper serveMapper;
-
-    @Resource
     private IRegionService regionService;
-
     @Resource
     private IServeService serveService;
-
     @Resource
-    private IServeTypeService serveTypeService;
-
-    @Resource
-    private ServeTypeMapper serveTypeMapper;
-
+    private ServeMapper serveMapper;
     @Resource
     private IServeItemService serveItemService;
+    //解决springCache同级方法调用失效问题
+    @Resource
+    private HomeService homeService;
+
+
     /**
-     * 首页查询相关功能
+     * 已开通服务区域列表
      *
-     * @author itcast
-     * @create 2023/8/21 10:57
-     **/
+     * @return 区域简略列表
+     */
+    @Override
+    @Cacheable(value = RedisConstants.CacheName.JZ_CACHE, key = "'ACTIVE_REGIONS'", cacheManager = RedisConstants.CacheManager.FOREVER)
+    public List<RegionSimpleResDTO> queryActiveRegionListCache() {
+        return regionService.queryActiveRegionList();
+    }
+
+    /**
+     * 根据区域id获取服务图标信息
+     *
+     * @param regionId 区域id
+     * @return 服务图标列表
+     */
+    @Override
     @Caching(
             cacheable = {
                     //result为null时,属于缓存穿透情况，缓存时间30分钟
@@ -89,34 +104,6 @@ public class HomeServiceImpl implements HomeService {
     }
 
 
-    @Override
-    @Cacheable(value = RedisConstants.CacheName.SERVE_TYPE,key = "#regionId",cacheManager = RedisConstants.CacheManager.THIRTY_MINUTES)
-    public List<serveTypeListResDTO> queryServeTypeList(Long regionId) {
-        return serveTypeMapper.queryServeTypeListByRegionId(regionId);
-    }
-
-    @Override
-    @Caching(evict = {
-            @CacheEvict(value = RedisConstants.CacheName.SERVE_ICON, key = "#id", beforeInvocation = true),
-            @CacheEvict(value = RedisConstants.CacheName.HOT_SERVE, key = "#id", beforeInvocation = true),
-            @CacheEvict(value = RedisConstants.CacheName.SERVE_TYPE, key = "#id", beforeInvocation = true)})
-    public void refreshRegionRelateCaches(Long regionId) {
-        // 更新每个区域对应的首页服务列表
-        serveService.getFirstPageServeList(regionId);
-
-        // 更新每个区域对应的服务类型列表
-        serveTypeService.getServeTypeList(regionId);
-
-        // 更新每个区域对应的热门服务列表
-        SpringBeanUtil.getBean(HomeService.class).findHotServeListByRegionIdCache(regionId);
-    }
-
-
-    @Override
-    public List<RegionSimpleResDTO> activeRegionCache() {
-        return regionService.queryActiveRegionList();
-    }
-
     /**
      * 根据区域id查询热门服务列表
      *
@@ -148,6 +135,36 @@ public class HomeServiceImpl implements HomeService {
     }
 
     /**
+     * 根据区域id查询已开通的服务类型
+     *
+     * @param regionId 区域id
+     * @return 已开通的服务类型
+     */
+    @Override
+    @Caching(
+            cacheable = {
+                    //result为null时,属于缓存穿透情况，缓存时间30分钟
+                    @Cacheable(value = RedisConstants.CacheName.SERVE_TYPE, key = "#regionId", unless = "#result.size() != 0", cacheManager = RedisConstants.CacheManager.THIRTY_MINUTES),
+                    //result不为null时,永久缓存
+                    @Cacheable(value = RedisConstants.CacheName.SERVE_TYPE, key = "#regionId", unless = "#result.size() == 0", cacheManager = RedisConstants.CacheManager.FOREVER)
+            }
+    )
+    public List<ServeAggregationTypeSimpleResDTO> queryServeTypeListByRegionIdCache(Long regionId) {
+        //1.校验当前城市是否为启用状态
+        Region region = regionService.getById(regionId);
+        if (ObjectUtil.equal(FoundationStatusEnum.DISABLE.getStatus(), region.getActiveStatus())) {
+            return Collections.emptyList();
+        }
+
+        //2.根据城市编码查询服务对应的服务分类
+        List<ServeAggregationTypeSimpleResDTO> list = serveService.findServeTypeListByRegionId(regionId);
+        if (ObjectUtil.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        return list;
+    }
+
+    /**
      * 根据id查询区域服务信息
      *
      * @param id 服务id
@@ -169,5 +186,23 @@ public class HomeServiceImpl implements HomeService {
     @Cacheable(value = RedisConstants.CacheName.SERVE_ITEM, key = "#id", cacheManager = RedisConstants.CacheManager.ONE_DAY)
     public ServeItem queryServeItemByIdCache(Long id) {
         return serveItemService.getById(id);
+    }
+
+    /**
+     * 刷新区域id相关缓存：首页图标、热门服务、服务分类
+     *
+     * @param regionId 区域id
+     */
+    @Override
+    @Caching(evict = {
+            @CacheEvict(value = RedisConstants.CacheName.SERVE_ICON, key = "#regionId", beforeInvocation = true),
+            @CacheEvict(value = RedisConstants.CacheName.HOT_SERVE, key = "#regionId", beforeInvocation = true),
+            @CacheEvict(value = RedisConstants.CacheName.SERVE_TYPE, key = "#regionId", beforeInvocation = true)
+    })
+    public void refreshRegionRelateCaches(Long regionId) {
+        //刷新缓存：首页图标、热门服务、服务类型
+        homeService.queryServeIconCategoryByRegionIdCache(regionId);
+        homeService.findHotServeListByRegionIdCache(regionId);
+        homeService.queryServeTypeListByRegionIdCache(regionId);
     }
 }

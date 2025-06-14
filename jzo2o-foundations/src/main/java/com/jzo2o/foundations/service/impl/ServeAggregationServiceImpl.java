@@ -13,7 +13,6 @@ import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
 import com.jzo2o.common.expcetions.ElasticSearchException;
 import com.jzo2o.common.utils.LambdaUtils;
-import com.jzo2o.common.utils.ObjectUtils;
 import com.jzo2o.es.core.ElasticSearchTemplate;
 import com.jzo2o.es.utils.SearchResponseUtils;
 import com.jzo2o.foundations.constants.IndexConstants;
@@ -40,6 +39,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class ServeAggregationServiceImpl implements ServeAggregationService {
+    @Resource
+    private ElasticsearchClient client;
 
     @Resource
     private ElasticSearchTemplate elasticSearchTemplate;
@@ -62,27 +63,32 @@ public class ServeAggregationServiceImpl implements ServeAggregationService {
             //匹配citycode
             bool.must(must->
                     must.term(term->
-                            term.field("city_code").value(cityCode)));
-            //todo 匹配服务类型
-
-            //匹配关键字
-            if(ObjectUtils.isNotEmpty(keyword)){
+                            term.field(LambdaUtils.getUnderLineFieldName(ServeAggregation::getCityCode)).value(cityCode)));
+            //匹配服务类型
+            if (ObjectUtil.isNotEmpty(serveTypeId)) {
                 bool.must(must->
-                        must.multiMatch(multiMatch->
-                                multiMatch.fields("serve_item_name","serve_type_name").query(keyword)));
+                        must.term(term->
+                                term.field(LambdaUtils.getUnderLineFieldName(ServeAggregation::getServeTypeId)).value(serveTypeId)));
             }
+            //匹配关键字
+            if (ObjectUtil.isNotEmpty(keyword)) {
+                String serveItemNameField = LambdaUtils.getUnderLineFieldName(ServeAggregation::getServeItemName);
+                String serveTypeNameField = LambdaUtils.getUnderLineFieldName(ServeAggregation::getServeTypeName);
+
+                bool.must(must->
+                        must.multiMatch(multiMatch->multiMatch.fields(serveItemNameField,serveTypeNameField).query(keyword)));
+            }
+
             return bool;
         }));
         // 排序 按服务项的serveItemSortNum排序(升序)
         List<SortOptions> sortOptions = new ArrayList<>();
         sortOptions.add(SortOptions.of(sortOption -> sortOption.field(field->field.field("serve_item_sort_num").order(SortOrder.Asc))));
         builder.sort(sortOptions);
-        //指定索引
-        builder.index("serve_aggregation");
-        //请求对象
-        SearchRequest searchRequest = builder.build();
+        // 索引
+        builder.index(IndexConstants.SERVE);
         // 检索数据
-        SearchResponse<ServeAggregation> searchResponse = elasticSearchTemplate.opsForDoc().search(searchRequest, ServeAggregation.class);
+        SearchResponse<ServeAggregation> searchResponse = elasticSearchTemplate.opsForDoc().search(builder.build(), ServeAggregation.class);
         //如果搜索成功返回结果集
         if (SearchResponseUtils.isSuccess(searchResponse)) {
             List<ServeAggregation> collect = searchResponse.hits().hits()
@@ -97,5 +103,4 @@ public class ServeAggregationServiceImpl implements ServeAggregationService {
         return  Collections.emptyList();
 
     }
-
 }

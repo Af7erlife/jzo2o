@@ -1,6 +1,6 @@
 #################     服务器配置     #################
 server:
-  port: 11510
+  port: 11509
   undertow:
     accesslog:
       enabled: true

@@ -2,6 +2,7 @@ package com.jzo2o.foundations.handler;
 
 import com.jzo2o.api.foundations.dto.response.RegionSimpleResDTO;
 import com.jzo2o.foundations.constants.RedisConstants;
+import com.jzo2o.foundations.model.domain.Serve;
 import com.jzo2o.foundations.service.HomeService;
 import com.jzo2o.foundations.service.IRegionService;
 import com.jzo2o.foundations.service.IServeService;
@@ -29,6 +30,8 @@ public class SpringCacheSyncHandler {
     @Resource
     private IRegionService regionService;
     @Resource
+    private IServeService serveService;
+    @Resource
     private RedisTemplate redisTemplate;
     @Resource
     private HomeService homeService;
@@ -45,7 +48,7 @@ public class SpringCacheSyncHandler {
         redisTemplate.delete(key);
 
         //2.刷新缓存
-        homeService.activeRegionCache();
+        homeService.queryActiveRegionListCache();
         log.info(">>>>>>>>更新已启用区域完成");
     }
 
@@ -74,10 +77,47 @@ public class SpringCacheSyncHandler {
         for (Long regionId : activeRegionIdList) {
             homeService.queryServeIconCategoryByRegionIdCache(regionId);
             homeService.findHotServeListByRegionIdCache(regionId);
-            homeService.queryServeTypeList(regionId);
+            homeService.queryServeTypeListByRegionIdCache(regionId);
         }
 
         log.info(">>>>>>>>更新用户端首页所选城市服务完成");
     }
 
+
+    /**
+     * 热门服务详情缓存更新
+     * 每3小时执行
+     */
+    @XxlJob(value = "hotServeCacheSync")
+    public void hotServeCacheSync() {
+        log.info(">>>>>>>>开始进行缓存同步，更新热门服务详情");
+
+        //1.查询热门且上架状态的服务
+        List<Serve> hotAndOnSaleServeList = serveService.queryHotAndOnSaleServeList();
+        Set<Long> hotServeItemIds=new HashSet<>();
+
+        //2.热门服务缓存续期
+        for (Serve serve : hotAndOnSaleServeList) {
+            //2.1删除热门服务缓存
+            String serveKey=RedisConstants.CacheName.SERVE+"::"+serve.getId();
+            redisTemplate.delete(serveKey);
+
+            //2.2重置热门服务缓存
+            homeService.queryServeByIdCache(serve.getId());
+
+            //2.2提取热门服务对应的服务项id
+            hotServeItemIds.add(serve.getServeItemId());
+        }
+
+        //3.对热门服务项更新缓存
+        for (Long serveItemId : hotServeItemIds) {
+            //3.1删除热门服务项缓存
+            String serveKey=RedisConstants.CacheName.SERVE_ITEM+"::"+serveItemId;
+            redisTemplate.delete(serveKey);
+
+            //3.2重置热门服务项缓存
+            homeService.queryServeItemByIdCache(serveItemId);
+        }
+        log.info(">>>>>>>>更新热门服务详情完成");
+    }
 }

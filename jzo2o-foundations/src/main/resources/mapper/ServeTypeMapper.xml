@@ -1,25 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.jzo2o.foundations.mapper.ServeTypeMapper">
-    <select id="queryServeTypeListByRegionId" resultMap="serveTypeList">
-        SELECT t.id       serve_type_id
-             , t.img      serve_type_img
-             , t.sort_num serve_type_sortNum
-             , t.name     serve_type_name
-        FROM serve_type t
-        WHERE t.id IN (SELECT DISTINCT si.serve_type_id
-                       FROM serve_item si
-                                LEFT JOIN serve se ON si.id = se.serve_item_id
-                       WHERE se.region_id = #{regionId}
-                         AND se.sale_status = 2)
-        ORDER BY t.sort_num;
-    </select>
 
-    <resultMap id="serveTypeList" type="com.jzo2o.foundations.model.dto.response.serveTypeListResDTO">
-        <id column="serve_type_id" property="serveTypeId"></id>
-        <!--result映射普通字段-->
-        <result column="serve_type_img" property="serveTypeImg"></result>
-        <result column="serve_type_sortNum" property="serveTypeSortNum"></result>
-        <result column="serve_type_name" property="serveTypeName"></result>
-    </resultMap>
 </mapper>

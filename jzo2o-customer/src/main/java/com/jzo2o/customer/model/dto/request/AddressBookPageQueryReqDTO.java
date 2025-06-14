@@ -2,7 +2,6 @@ package com.jzo2o.customer.model.dto.request;
 
 import com.jzo2o.common.model.dto.PageQueryDTO;
 import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 
 /**
@@ -16,6 +15,4 @@ import lombok.Data;
 @Data
 @ApiModel("地址薄分页查询请求")
 public class AddressBookPageQueryReqDTO extends PageQueryDTO {
-    @ApiModelProperty("用户id")
-    private Long userId;
 }

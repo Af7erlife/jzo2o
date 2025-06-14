@@ -1,8 +1,7 @@
 package com.jzo2o.customer.controller.open;
 
+
 import com.jzo2o.customer.model.dto.request.InstitutionRegisterReqDTO;
-import com.jzo2o.customer.model.dto.request.InstitutionResetPasswordReqDTO;
-import com.jzo2o.customer.model.dto.response.LoginResDTO;
 import com.jzo2o.customer.service.IServeProviderService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -13,17 +12,24 @@ import org.springframework.web.bind.annotation.RestController;
 
 import javax.annotation.Resource;
 
-@RestController("ServeProviderController")
+/**
+ * <p>
+ * 服务人员/机构表 前端控制器
+ * </p>
+ *
+ * @author itcast
+ * @since 2023-07-17
+ */
+@RestController("openServeProviderController")
 @RequestMapping("/open/serve-provider")
-@Api(tags = "服务提供接口")
+@Api(tags = "白名单接口 - 服务人员或机构相关接口")
 public class ServeProviderController {
     @Resource
-    IServeProviderService serveProviderService;
+    private IServeProviderService serveProviderService;
 
     @PostMapping("/institution/register")
-    @ApiOperation("机构端-注册")
-    public void register(@RequestBody InstitutionRegisterReqDTO reqDTO) {
-        serveProviderService.register(reqDTO);
+    @ApiOperation("机构注册接口")
+    public void institutionRegister(@RequestBody InstitutionRegisterReqDTO institutionRegisterReqDTO) {
+        serveProviderService.registerInstitution(institutionRegisterReqDTO);
     }
-
 }

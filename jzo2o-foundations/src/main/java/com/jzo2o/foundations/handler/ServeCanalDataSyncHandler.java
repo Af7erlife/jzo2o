@@ -16,11 +16,8 @@ import javax.annotation.Resource;
 import java.util.List;
 
 /**
- * 服务信息同步程序
- *
- * @author itcast
- * @create 2023/8/15 18:14
- **/
+ * @author 86188
+ */
 @Component
 public class ServeCanalDataSyncHandler extends AbstractCanalRabbitMqMsgListener<ServeSync> {
 
@@ -53,13 +50,6 @@ public class ServeCanalDataSyncHandler extends AbstractCanalRabbitMqMsgListener<
     @Override
     public void batchDelete(List<Long> ids) {
         Boolean aBoolean = elasticSearchTemplate.opsForDoc().batchDelete(IndexConstants.SERVE, ids);
-        if(!aBoolean){
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-            throw new RuntimeException("同步失败");
-        }
+
     }
 }

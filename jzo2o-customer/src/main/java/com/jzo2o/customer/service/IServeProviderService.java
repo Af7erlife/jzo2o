@@ -9,7 +9,10 @@ import com.jzo2o.customer.model.domain.ServeProvider;
 import com.jzo2o.customer.model.dto.request.InstitutionRegisterReqDTO;
 import com.jzo2o.customer.model.dto.request.InstitutionResetPasswordReqDTO;
 import com.jzo2o.customer.model.dto.request.ServeProviderPageQueryReqDTO;
-import com.jzo2o.customer.model.dto.response.*;
+import com.jzo2o.customer.model.dto.response.CertificationStatusDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderBasicInformationResDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderInfoResDTO;
+import com.jzo2o.customer.model.dto.response.ServeProviderListResDTO;
 
 import java.util.List;
 
@@ -63,6 +66,12 @@ public interface IServeProviderService extends IService<ServeProvider> {
      */
     ServeProvider findById(Long id);
 
+    /**
+     * 注册机构用户
+     *
+     * @param institutionRegisterReqDTO
+     */
+    void registerInstitution(InstitutionRegisterReqDTO institutionRegisterReqDTO);
 
     /**
      * 新增用户
@@ -72,6 +81,19 @@ public interface IServeProviderService extends IService<ServeProvider> {
      * @param password 机构登录密码
      */
     ServeProvider add(String phone, Integer type, String password);
+
+    /**
+     * 机构密码重置
+     *
+     * @param institutionResetPasswordReqDTO
+     */
+    void resetPassword(InstitutionResetPasswordReqDTO institutionResetPasswordReqDTO);
+
+//    /**
+//     * 校验是否完成首次配置，如果完成则打上标记
+//     * @param currentUserId
+//     */
+//    void settingStatus(Long currentUserId);
 
     ServeProviderResDTO findServeProviderInfo(Long id);
 
@@ -118,18 +140,4 @@ public interface IServeProviderService extends IService<ServeProvider> {
      * @return
      */
     CertificationStatusDTO getCertificationStatus(Integer userType, Long providerId);
-
-    /**
-     * 短信验证码注册账号
-     * @param institutionRegisterReqDTO
-     * @return
-     */
-    void register(InstitutionRegisterReqDTO institutionRegisterReqDTO);
-
-    /**
-     * 忘记密码
-     * @param reqDTO
-     * @return
-     */
-    void resetPassword(InstitutionResetPasswordReqDTO reqDTO);
 }
